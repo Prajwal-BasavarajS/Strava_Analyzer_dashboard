@@ -1,4 +1,5 @@
 import os
+import json
 import requests
 from dotenv import load_dotenv
 from urllib.parse import urlencode
@@ -31,8 +32,8 @@ def exchange_code_for_token(code):
         "code": code,
         "grant_type": "authorization_code",
     }
-
-    response = requests.post(url, data=payload)
+    response = requests.post(url, data=payload, timeout=30)
+    response.raise_for_status()
     return response.json()
 
 
@@ -40,24 +41,35 @@ def get_athlete(access_token):
     headers = {"Authorization": f"Bearer {access_token}"}
     response = requests.get(
         "https://www.strava.com/api/v3/athlete",
-        headers=headers
+        headers=headers,
+        timeout=30,
     )
+    response.raise_for_status()
     return response.json()
 
 
 def main():
-    print("\nStep 1: Open this URL in browser:\n")
+    if not CLIENT_ID or not CLIENT_SECRET:
+        raise ValueError("Missing STRAVA_CLIENT_ID or STRAVA_CLIENT_SECRET in .env")
+
+    print("\nOpen this URL in your browser:\n")
     print(build_auth_url())
 
-    code = input("\nStep 2: Paste the 'code' from redirected URL here:\n")
+    code = input("\nPaste the 'code' from the redirected URL here:\n").strip()
 
     token_data = exchange_code_for_token(code)
-    access_token = token_data["access_token"]
 
-    athlete = get_athlete(access_token)
+    print("\nSave these in your .env file:\n")
+    print(f"STRAVA_ACCESS_TOKEN={token_data['access_token']}")
+    print(f"STRAVA_REFRESH_TOKEN={token_data['refresh_token']}")
+    print(f"STRAVA_EXPIRES_AT={token_data['expires_at']}")
 
-    print("\n SUCCESS")
-    print(f"Your name: {athlete['firstname']} {athlete['lastname']}")
+    os.makedirs("data/raw", exist_ok=True)
+    with open("data/raw/token_response.json", "w") as f:
+        json.dump(token_data, f, indent=2)
+
+    athlete = get_athlete(token_data["access_token"])
+    print(f"\nYour athlete name: {athlete.get('firstname')} {athlete.get('lastname')}")
 
 
 if __name__ == "__main__":
